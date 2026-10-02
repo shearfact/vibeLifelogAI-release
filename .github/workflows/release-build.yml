@@ -1,0 +1,77 @@
+name: Release Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '私有库 tag（如 v2.3.0-b6）'
+        required: true
+        type: string
+      notes:
+        description: 'Release 说明（可选，缺省自动生成）'
+        required: false
+        type: string
+  repository_dispatch:
+    types: [release-build]
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build from private source & publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout private source at tag
+        uses: actions/checkout@v4
+        with:
+          repository: shearfact/vibeLifelogAI
+          ref: ${{ github.event.client_payload.tag || inputs.tag }}
+          token: ${{ secrets.CHECKOUT_TOKEN }}
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Restore pinned debug keystore
+        run: |
+          mkdir -p ~/.android
+          echo "$DEBUG_KEYSTORE_BASE64" | base64 --decode > ~/.android/debug.keystore
+          keytool -list -keystore ~/.android/debug.keystore -storepass android > /dev/null
+        env:
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run unit tests
+        run: ./gradlew :core:test :app:testDebugUnitTest --console=plain
+
+      - name: Assemble debug APK
+        run: ./gradlew :app:assembleDebug --console=plain
+
+      - name: Create release and upload APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.client_payload.tag || inputs.tag }}
+          NOTES: ${{ github.event.client_payload.notes || inputs.notes }}
+        run: |
+          if [ -n "$NOTES" ]; then
+            gh release create "$TAG" --title "$TAG" --notes "$NOTES" --latest
+          else
+            gh release create "$TAG" --title "$TAG" --generate-notes --latest
+          fi
+          gh release upload "$TAG" app/build/outputs/apk/debug/*.apk
+
+      - name: Cleanup previous runs
+        env:
+          GH_TOKEN: ${{ secrets.CLEANUP_TOKEN }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs?per_page=100" --paginate \
+            | jq -r --argjson cur "${{ github.run_id }}" \
+              '.workflow_runs[] | select(.id != $cur and .status == "completed") | .id' \
+            | while read -r id; do
+                gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/runs/$id" >/dev/null || true
+              done
