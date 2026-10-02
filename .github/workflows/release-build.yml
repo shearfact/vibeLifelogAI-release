@@ -57,13 +57,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.client_payload.tag || inputs.tag }}
           NOTES: ${{ github.event.client_payload.notes || inputs.notes }}
+          # 显式指定发布库：checkout 后工作目录的 origin 是私有库，gh 不带 -R 会解析错仓库
+          RELEASE_REPO: shearfact/vibeLifelogAI-release
         run: |
           if [ -n "$NOTES" ]; then
-            gh release create "$TAG" --title "$TAG" --notes "$NOTES" --latest
+            gh release create "$TAG" --repo "$RELEASE_REPO" --title "$TAG" --notes "$NOTES" --latest
           else
-            gh release create "$TAG" --title "$TAG" --generate-notes --latest
+            gh release create "$TAG" --repo "$RELEASE_REPO" --title "$TAG" --generate-notes --latest
           fi
-          gh release upload "$TAG" app/build/outputs/apk/debug/*.apk
+          gh release upload "$TAG" --repo "$RELEASE_REPO" app/build/outputs/apk/debug/*.apk
 
       - name: Cleanup previous runs
         env:
