@@ -4,13 +4,18 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: '私有库 tag（如 v2.3.0-b6）'
+        description: '私有库 ref（tag / 分支 / SHA，如 v2.3.0-b6）'
         required: true
         type: string
       notes:
         description: 'Release 说明（可选，缺省自动生成）'
         required: false
         type: string
+      create_release:
+        description: '构建后创建 Release（关闭 = 仅出构建 artifact，供中间版试装）'
+        required: false
+        type: boolean
+        default: true
   repository_dispatch:
     types: [release-build]
 
@@ -53,6 +58,7 @@ jobs:
         run: ./gradlew :app:assembleDebug --console=plain
 
       - name: Create release and upload APK
+        if: ${{ github.event.client_payload.create_release != false && inputs.create_release != false }}
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.client_payload.tag || inputs.tag }}
@@ -66,6 +72,15 @@ jobs:
             gh release create "$TAG" --repo "$RELEASE_REPO" --title "$TAG" --generate-notes --latest
           fi
           gh release upload "$TAG" --repo "$RELEASE_REPO" app/build/outputs/apk/debug/*.apk
+
+      - name: Upload APK artifact (no-release mode)
+        if: ${{ github.event.client_payload.create_release == false || inputs.create_release == false }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: vibeLifelogAI-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Cleanup previous runs
         env:
