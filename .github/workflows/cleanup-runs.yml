@@ -1,0 +1,20 @@
+name: Cleanup Runs
+
+on:
+  schedule:
+    - cron: '0 21 * * *'  # 每日一次全量清扫运行记录
+  workflow_dispatch:
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete all completed workflow runs
+        env:
+          GH_TOKEN: ${{ secrets.CLEANUP_TOKEN }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs?per_page=100" --paginate \
+            | jq -r '.workflow_runs[] | select(.status == "completed") | .id' \
+            | while read -r id; do
+                gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/runs/$id" >/dev/null || true
+              done
