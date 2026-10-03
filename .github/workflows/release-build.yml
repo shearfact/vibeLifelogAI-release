@@ -27,6 +27,15 @@ jobs:
     name: Build from private source & publish
     runs-on: ubuntu-latest
     steps:
+      - name: Determine release mode
+        id: mode
+        run: |
+          # 显式归一化为字符串，规避表达式 null!=false 的类型强转（两者都转 0）
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "create=${{ inputs.create_release }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "create=${{ github.event.client_payload.create_release }}" >> "$GITHUB_OUTPUT"
+          fi
       - name: Checkout private source at tag
         uses: actions/checkout@v4
         with:
@@ -58,7 +67,7 @@ jobs:
         run: ./gradlew :app:assembleDebug --console=plain
 
       - name: Create release and upload APK
-        if: ${{ github.event.client_payload.create_release != false && inputs.create_release != false }}
+        if: steps.mode.outputs.create == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.client_payload.tag || inputs.tag }}
@@ -74,7 +83,7 @@ jobs:
           gh release upload "$TAG" --repo "$RELEASE_REPO" app/build/outputs/apk/debug/*.apk
 
       - name: Upload APK artifact (no-release mode)
-        if: ${{ github.event.client_payload.create_release == false || inputs.create_release == false }}
+        if: steps.mode.outputs.create != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: vibeLifelogAI-debug-apk
