@@ -63,6 +63,17 @@ jobs:
       - name: Run unit tests
         run: ./gradlew :core:test :app:testDebugUnitTest --console=plain
 
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            core/build/test-results/**/*.xml
+            app/build/test-results/**/*.xml
+          retention-days: 3
+          if-no-files-found: ignore
+
       - name: Assemble debug APK
         run: ./gradlew :app:assembleDebug --console=plain
 
